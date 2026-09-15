@@ -1,1 +1,113 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JJ CAPCUT</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui;background:#07070a;color:#fff}
+.wrap{max-width:900px;margin:auto;padding:24px 16px}.hero{padding:28px 0}.badge{display:inline-block;padding:7px 11px;border:1px solid #292932;border-radius:999px;color:#aaa;font-size:12px}
+h1{font-size:42px;margin:15px 0 8px}p{color:#aaa}.card{background:#101016;border:1px solid #24242d;border-radius:20px;padding:18px;margin:16px 0}
+.row{display:flex;gap:10px;flex-wrap:wrap}input,button{border-radius:12px;border:1px solid #30303a;padding:12px;background:#18181f;color:#fff}input{flex:1;min-width:180px}
+button{cursor:pointer;background:#fff;color:#000;font-weight:700}.templates{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.tpl{padding:14px;border:1px solid #292932;border-radius:14px}.tpl b{display:block;margin-bottom:7px}.muted{color:#888;font-size:13px}.selected{border-color:#fff}
+#photos{width:100%;padding:10px}.actions{margin-top:12px}.status{white-space:pre-wrap;color:#bbb}.result video{width:100%;border-radius:14px;margin-top:12px}.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <span class="badge">CAPCUT TEMPLATE RENDER</span>
+    <h1>JJ CAPCUT</h1>
+    <p>Pilih template, upload foto, lalu render langsung dari website.</p>
+  </div>
 
+  <div class="card">
+    <h3>1. Cari template</h3>
+    <div class="row">
+      <input id="search" placeholder="contoh: jedag jedug">
+      <button onclick="search()">Cari</button>
+      <button onclick="loadList()">Semua</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Template</h3>
+    <div id="templates" class="templates"><div class="muted">Memuat...</div></div>
+  </div>
+
+  <div class="card">
+    <h3>2. Upload foto</h3>
+    <input id="photos" type="file" accept="image/*" multiple>
+    <div id="picked" class="muted"></div>
+    <div class="actions"><button onclick="renderVideo()">Render Video</button></div>
+    <div id="status" class="status"></div>
+    <div id="result" class="result hidden"></div>
+  </div>
+</div>
+
+<script>
+let selected = null;
+const $ = id => document.getElementById(id);
+
+async function loadList(){
+  $("templates").innerHTML="<div class='muted'>Memuat template...</div>";
+  try{
+    const r=await fetch("/api/capcut?action=list");
+    const data=await r.json();
+    if(!r.ok) throw new Error(data.error);
+    showTemplates(data);
+  }catch(e){$("templates").innerHTML="<div class='muted'>Gagal: "+e.message+"</div>"}
+}
+async function search(){
+  const q=$("search").value.trim();
+  if(!q)return;
+  $("templates").innerHTML="<div class='muted'>Mencari...</div>";
+  try{
+    const r=await fetch("/api/capcut?action=search&q="+encodeURIComponent(q));
+    const data=await r.json();
+    if(!r.ok) throw new Error(data.error);
+    showTemplates(Array.isArray(data)?data:data.results||[]);
+  }catch(e){$("templates").innerHTML="<div class='muted'>Gagal: "+e.message+"</div>"}
+}
+function showTemplates(list){
+  if(!list.length){$("templates").innerHTML="<div class='muted'>Tidak ada template.</div>";return}
+  $("templates").innerHTML=list.map((x,i)=>{
+    const id=x.id;
+    const title=x.title||"Untitled";
+    return `<div class="tpl ${selected===id?'selected':''}" onclick="pick('${String(id).replaceAll("'","\\'")}',this)">
+      <b>${i+1}. ${escapeHtml(title)}</b>
+      <span class="muted">ID: ${escapeHtml(String(id))}</span><br>
+      <span class="muted">${x.mediaCount||1} foto • ${x.resolusi||"9:16"}</span>
+    </div>`
+  }).join("");
+}
+function pick(id,el){
+  selected=id;
+  document.querySelectorAll(".tpl").forEach(x=>x.classList.remove("selected"));
+  el.classList.add("selected");
+  $("status").textContent="Template dipilih: "+id;
+}
+$("photos").addEventListener("change",()=>{$("picked").textContent=$("photos").files.length+" foto dipilih";});
+async function renderVideo(){
+  const files=[...$("photos").files];
+  if(!selected)return alert("Pilih template dulu.");
+  if(!files.length)return alert("Upload foto dulu.");
+  $("status").textContent="⏳ Mengupload dan memulai render...";
+  $("result").classList.add("hidden");
+  const fd=new FormData();
+  fd.append("templateId",selected);
+  files.forEach(f=>fd.append("photos",f,f.name));
+  try{
+    const r=await fetch("/api/capcut",{method:"POST",body:fd});
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.error||"Render gagal");
+    $("status").textContent="✅ Video selesai.";
+    $("result").innerHTML=`<video controls playsinline src="${data.videoUrl}"></video><p><a href="${data.videoUrl}" target="_blank" style="color:#fff">Buka hasil video</a></p>`;
+    $("result").classList.remove("hidden");
+  }catch(e){$("status").textContent="❌ "+e.message}
+}
+function escapeHtml(s){return s.replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+loadList();
+</script>
+</body>
+</html>
